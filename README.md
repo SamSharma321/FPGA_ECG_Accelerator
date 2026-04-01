@@ -350,6 +350,6 @@ For questions or contributions, please contact the repository maintainers.
 ---
 
 **Repository**: FPGA_ECG_Accelerator  
-**Owner**: SamSharma321  
+**Owner**: Sameera Sharma  
 **Branch**: main  
 **Last Updated**: April 2026
