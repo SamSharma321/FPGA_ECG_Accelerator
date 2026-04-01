@@ -1,12 +1,12 @@
 ### FPGA ECG Accelerator
 
+![FPGA ECG Accelerator Poster](BITN_ECG_Poster.png)
+
 A high-performance hardware accelerator design for real-time ECG signal processing on FPGA using Xilinx Vitis HLS. This design processes ECG data blocks to detect heartbeat peaks and compute heart rate statistics.
 
 #### Overview
 
-This repository contains a fully optimized FPGA kernel tha- Careful buffer sizing to prevent backpressure in FIFO chains
-
-##### Circular Buffer Patternrocesses ECG (electrocardiogram) data streams to:
+This repository contains a fully optimized FPGA kernel that processes ECG (electrocardiogram) data streams to:
 - Remove baseline wandering with high-pass filtering
 - Compute signal derivatives
 - Detect R-wave peaks using energy integration
@@ -171,6 +171,82 @@ Comprehensive design report containing:
 - Timing and throughput analysis
 - Design trade-offs and justifications
 
+##### Data Processing & Utilities
+
+###### **`data_exporter.py`** – MIT-BIH Database Exporter
+Python script to extract and convert ECG data from MIT-BIH Arrhythmia Database to C++ header format.
+
+**Features:**
+- Loads ECG records using the `wfdb` library
+- Supports configurable duration and sampling rate
+- Converts floating-point samples to 16-bit integer format (scaled by factor of 1000)
+- Automatically pads data to block-aligned boundaries (2048-sample blocks)
+- Generates `ecg_dram_image.h` with packed AXI words (256-bit wide, 16 samples per word)
+- Includes interactive matplotlib visualization with slider control
+- Configuration parameters:
+  - `DB_NAME`: Database name ('mitdb')
+  - `RECORD_NAME`: Specific ECG record to process ("100", etc.)
+  - `CHANNEL_INDEX`: Which channel to extract (0 for primary channel)
+  - `DURATION_SEC`: Duration in seconds (default: 300 seconds / 5 minutes)
+  - `SCALE`: Floating-point to integer scaling factor (1000.0)
+
+**Usage:**
+```bash
+python3 data_exporter.py
+```
+
+###### **`ads_data_exporter.py`** – CSV Data Exporter
+Python script to convert arbitrary CSV ECG data to C++ header format.
+
+**Features:**
+- Loads ECG data from CSV files (e.g., `2.csv`, `ble_uuid_data_latest.csv`)
+- Flexible electrode/channel selection
+- Configurable sampling frequency
+- Handles missing values (NaN removal)
+- Same output format as `data_exporter.py` for kernel compatibility
+- Configuration parameters:
+  - `CSV_FILE`: Input CSV filename
+  - `CHANNEL_NAME`: Column name to extract (e.g., "EEF3")
+  - `FS_HZ`: Sampling frequency in Hz (500 Hz)
+  - `DURATION_SEC`: Maximum duration to load
+  - `SCALE`: Scaling factor for data normalization (1.0 for already-normalized data)
+
+**Usage:**
+```bash
+python3 ads_data_exporter.py
+```
+
+###### **Output Directory Structure**
+Both exporters create the following structure:
+```
+cpp_data/{BLOCK_SAMPLES}_samples/ecg_dram_image.h    (for MIT-BIH data)
+ads_cpp_data/{BLOCK_SAMPLES}_samples/ecg_dram_image.h (for CSV data)
+```
+
+The generated `ecg_dram_image.h` is a drop-in replacement for the kernel testbench.
+
+##### Data Files
+
+###### **`2.csv`** – ADS EEG/ECG Data
+Multi-channel physiological signal recordings (188,342 rows).
+
+**Channels:** EEF1, EEF2, EEF3, EEF4, EEF5, EEF6, EEF7, EEF8, EFF1 (9 channels)  
+**Format:** Floating-point values per column  
+**Use Case:** Alternative dataset for testing with `ads_data_exporter.py`
+
+###### **`ble_uuid_data_latest.csv`** – BLE UUID Physiological Data
+Extended multi-channel recordings (382,742 rows, larger dataset).
+
+**Channels:** Same as 2.csv (EEF1-EEF8, EFF1)  
+**Format:** Floating-point values per column  
+**Use Case:** Long-duration testing for performance validation
+
+###### **`cpp_data/`** – Generated MIT-BIH C++ Header
+Directory containing `ecg_dram_image.h` generated from MIT-BIH database.
+
+###### **`ads_cpp_data/`** – Generated CSV C++ Header
+Directory containing `ecg_dram_image.h` generated from CSV files.
+
 #### Algorithm Overview
 
 ##### Signal Processing Pipeline
@@ -265,6 +341,69 @@ Expected output (on success):
 TEST PASSED!!!
 ```
 
+#### Data Generation Workflow
+
+The repository includes utilities to generate test datasets from different sources:
+
+##### Using MIT-BIH Database (Recommended)
+
+1. **Install dependencies:**
+```bash
+pip3 install wfdb numpy matplotlib
+```
+
+2. **Run the exporter:**
+```bash
+python3 data_exporter.py
+```
+
+3. **Output:**
+   - Generates `cpp_data/2048_samples/ecg_dram_image.h`
+   - Creates an interactive plot for visual verification
+   - Automatically pads data to 2048-sample block boundaries
+
+##### Using Custom CSV Data
+
+1. **Install dependencies:**
+```bash
+pip3 install pandas numpy matplotlib
+```
+
+2. **Prepare your CSV:**
+   - Ensure CSV has headers (column names)
+   - One column per electrode/channel
+   - Floating-point values acceptable
+
+3. **Update configuration in `ads_data_exporter.py`:**
+```python
+CSV_FILE = "your_data.csv"
+CHANNEL_NAME = "desired_column"
+FS_HZ = 500  # Your sampling frequency
+```
+
+4. **Run the exporter:**
+```bash
+python3 ads_data_exporter.py
+```
+
+5. **Output:**
+   - Generates `ads_cpp_data/2048_samples/ecg_dram_image.h`
+   - Interactive visualization available
+
+##### Switching Between Datasets
+
+To use a generated dataset with the kernel:
+
+```bash
+# For MIT-BIH data
+cp cpp_data/2048_samples/ecg_dram_image.h .
+make clean && make && ./result
+
+# For CSV data
+cp ads_cpp_data/2048_samples/ecg_dram_image.h .
+make clean && make && ./result
+```
+
 #### Output Format
 
 The kernel produces an `ECGSummaryOut` structure for each block:
@@ -305,6 +444,12 @@ All 74 blocks must pass for successful test execution.
 | `script.tcl` | - | HLS synthesis automation |
 | `baseline_explanation.pdf` | - | Algorithm documentation |
 | `report.pdf` | - | Design report |
+| `data_exporter.py` | 160 | MIT-BIH database to C++ converter |
+| `ads_data_exporter.py` | 167 | CSV data to C++ converter |
+| `2.csv` | 188,342 | ADS multi-channel signal recordings |
+| `ble_uuid_data_latest.csv` | 382,742 | BLE UUID physiological data (extended) |
+| `cpp_data/` | - | Generated MIT-BIH C++ headers |
+| `ads_cpp_data/` | - | Generated CSV C++ headers |
 
 #### Design Insights
 
@@ -316,7 +461,7 @@ Each pipeline stage maintains strict II=1 initiation interval by:
 3. **Cyclic array partitioning** to avoid memory access conflicts
 4. **Careful buffer sizing** to prevent backpressure in FIFO chains
 
-### Circular Buffer Pattern
+##### Circular Buffer Pattern
 
 Baseline and integration stages use circular buffers with the pattern:
 ```
