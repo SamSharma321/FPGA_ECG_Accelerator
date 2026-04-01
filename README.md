@@ -39,7 +39,7 @@ The optimized Vitis HLS kernel implementing a 9-stage streaming pipeline archite
   │  k_load    │────────────▶│ k_unpack   │──────────────────────────────┐
   │ (burst AXI)│             │ (FACTOR    │                              │
   └────────────┘             │  parallel) │                              ▼
-                             └────────────┘               ┌─────────────────────┐
+                             └────────────┘                ┌─────────────────────┐
                                                            │   k_baseline        │
                                                            │ (circular buf II=1) │
                                                            └──────────┬──────────┘
